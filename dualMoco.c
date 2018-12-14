@@ -73,6 +73,10 @@ static uchar utx_buf[RX_SIZE];	/* BULK_IN buffer */
 static uchar uwptr = 0, irptr = 0;
 static uchar tx_buf[TX_SIZE];
 
+#define    ARD_RX_SIZE    64 /* Serial buffer size on the other end */
+/* Lower bound on the number of 3-byte MIDI messages the receiver can currently accept */
+static uchar ard_rx_free = (ARD_RX_SIZE - 1) / 3;
+
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
  *  within a device can be differentiated from one another.
@@ -178,6 +182,14 @@ uchar parseSerialMidiMessage(uchar RxByte) {
     }
     return FALSE;
   }
+  if (RxByte == 0xf9) {
+    /** We use this undefined single byte message as a signal
+     *  that a spot in the buffer on the other end has
+     *  opened up
+     */
+    ++ard_rx_free;
+    return FALSE;
+  }
   if (RxByte >= 0xf8){		/* Single Byte Message */
     utx_buf[0] = 0x0f;
     utx_buf[1] = RxByte;
@@ -250,20 +262,23 @@ void processMIDI() {
       utxrdy = FALSE;
     }
 
-    /* receive from USB MIDI */
-    MIDI_EventPacket_t ReceivedMIDIEvent;
-    if (MIDI_Device_ReceiveEventPacket(&Keyboard_MIDI_Interface, &ReceivedMIDIEvent)) {
-      /* for each MIDI packet w/ 4 bytes */
-      parseUSBMidiMessage((uchar *)&ReceivedMIDIEvent, 4);
-      LEDs_TurnOnLEDs(LEDMASK_RX);
-      PulseMSRemaining.RxLEDPulse = TX_RX_LED_PULSE_MS;
-    }
-      
-    /* send to Serial MIDI line  */
-    while (uwptr!=irptr) {
-      if(UCSR1A & (1<<UDRE1)) {
-        UDR1 = tx_buf[irptr++];
-        irptr &= TX_MASK;
+    if (ard_rx_free > 0) {
+      /* receive from USB MIDI */
+      MIDI_EventPacket_t ReceivedMIDIEvent;
+      if (MIDI_Device_ReceiveEventPacket(&Keyboard_MIDI_Interface, &ReceivedMIDIEvent)) {
+        /* for each MIDI packet w/ 4 bytes */
+        parseUSBMidiMessage((uchar *)&ReceivedMIDIEvent, 4);
+        LEDs_TurnOnLEDs(LEDMASK_RX);
+        PulseMSRemaining.RxLEDPulse = TX_RX_LED_PULSE_MS;
+        --ard_rx_free;
+      }
+
+      /* send to Serial MIDI line  */
+      while (uwptr!=irptr) {
+        if(UCSR1A & (1<<UDRE1)) {
+          UDR1 = tx_buf[irptr++];
+          irptr &= TX_MASK;
+        }
       }
     }
     
