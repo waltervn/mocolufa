@@ -252,7 +252,7 @@ void processMIDI() {
 
     /* receive from USB MIDI */
     MIDI_EventPacket_t ReceivedMIDIEvent;
-    while (MIDI_Device_ReceiveEventPacket(&Keyboard_MIDI_Interface, &ReceivedMIDIEvent)) {
+    if (MIDI_Device_ReceiveEventPacket(&Keyboard_MIDI_Interface, &ReceivedMIDIEvent)) {
       /* for each MIDI packet w/ 4 bytes */
       parseUSBMidiMessage((uchar *)&ReceivedMIDIEvent, 4);
       LEDs_TurnOnLEDs(LEDMASK_RX);
@@ -260,9 +260,11 @@ void processMIDI() {
     }
       
     /* send to Serial MIDI line  */
-    if( (UCSR1A & (1<<UDRE1)) && uwptr!=irptr ) {
-      UDR1 = tx_buf[irptr++];
-      irptr &= TX_MASK;
+    while (uwptr!=irptr) {
+      if(UCSR1A & (1<<UDRE1)) {
+        UDR1 = tx_buf[irptr++];
+        irptr &= TX_MASK;
+      }
     }
     
     if (TIFR0 & (1 << TOV0)) {
