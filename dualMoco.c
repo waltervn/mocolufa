@@ -74,8 +74,9 @@ static uchar uwptr = 0, irptr = 0;
 static uchar tx_buf[TX_SIZE];
 
 #define    ARD_RX_SIZE    64 /* Serial buffer size on the other end */
+#define    ARD_RX_EMPTY   ((ARD_RX_SIZE - 1) / 3)
 /* Lower bound on the number of 3-byte MIDI messages the receiver can currently accept */
-static uchar ard_rx_free = (ARD_RX_SIZE - 1) / 3;
+static uchar ard_rx_free = ARD_RX_EMPTY;
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -188,6 +189,14 @@ uchar parseSerialMidiMessage(uchar RxByte) {
      *  opened up
      */
     ++ard_rx_free;
+    return FALSE;
+  }
+  if (RxByte == 0xfd) {
+    /* We use this undefined single byte message as a reset mechanism */
+    ard_rx_free = ARD_RX_EMPTY;
+    /* Echo it back */
+    while (!(UCSR1A & (1<<UDRE1)));
+    UDR1 = 0xfd;
     return FALSE;
   }
   if (RxByte >= 0xf8){		/* Single Byte Message */
